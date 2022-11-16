@@ -1,19 +1,19 @@
-#![deny(warnings)]
 use axum::{
     extract::Path,
     handler::Handler,
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::get,
-    Router, Server, TypedHeader,
+    routing::post,
+    Router, Server, TypedHeader, Json
 };
-use headers::{ContentType, Expires};
-
+use headers::{ContentType, Expires, Authorization};
+use serde::{Deserialize, Serialize};
 use std::{
     io::{self, Write},
     time::{Duration, SystemTime},
 };
-
+use axum_auth::AuthBearer;
 use templates::statics::StaticFile;
 
 #[macro_use]
@@ -23,10 +23,24 @@ mod axum_ructe;
 fn app() -> Router {
     Router::new()
         .route("/", get(home_page))
+        .route("/beeps", post(post_beep))
         .route("/static/:filename", get(static_files))
         .route("/int/:n", get(take_int))
         .route("/bad", get(make_error))
         .fallback(handler_404.into_service())
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateTodo {
+    text: String,
+}
+
+async fn post_beep(AuthBearer(token): AuthBearer, Json(input): Json<CreateTodo>) -> impl IntoResponse {
+    format!("Found a bearer token: {}", token);
+
+    println!("Got a beep: {}", input.text);
+
+    StatusCode::CREATED
 }
 
 /// Home page handler; just render a template with some arguments.
