@@ -1,33 +1,46 @@
 use axum::{
-    extract::Path,
+    extract::{Extension, Path},
     handler::Handler,
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::get,
     routing::post,
-    Router, Server, TypedHeader, Json
+    Json, Router, Server, TypedHeader,
 };
-use headers::{ContentType, Expires, Authorization};
+use axum_auth::AuthBearer;
+use headers::{Authorization, ContentType, Expires};
 use serde::{Deserialize, Serialize};
+use std::env;
+use std::sync::Arc;
 use std::{
     io::{self, Write},
     time::{Duration, SystemTime},
 };
-use axum_auth::AuthBearer;
 use templates::statics::StaticFile;
+use time::format_description::well_known::Rfc2822;
+use time::OffsetDateTime;
+use tokio::sync::Mutex;
 
 #[macro_use]
 mod axum_ructe;
 
+struct AppState {
+    beeps: Mutex<Vec<Beep>>,
+}
+
 /// Setup routes
 fn app() -> Router {
+    let my_beeps = Mutex::new(Vec::new());
+    let app_state = Arc::new(AppState { beeps: my_beeps });
+
     Router::new()
         .route("/", get(home_page))
         .route("/beeps", post(post_beep))
         .route("/static/:filename", get(static_files))
-        .route("/int/:n", get(take_int))
+        //        .route("/int/:n", get(take_int))
         .route("/bad", get(make_error))
         .fallback(handler_404.into_service())
+        .layer(Extension(app_state))
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,20 +48,44 @@ struct CreateTodo {
     text: String,
 }
 
-async fn post_beep(AuthBearer(token): AuthBearer, Json(input): Json<CreateTodo>) -> impl IntoResponse {
+async fn post_beep(
+    Extension(state): Extension<Arc<AppState>>,
+    AuthBearer(token): AuthBearer,
+    Json(input): Json<CreateTodo>,
+) -> impl IntoResponse {
+    let foo = env::var("MADIK").unwrap();
+
     format!("Found a bearer token: {}", token);
+    // compare bearer token
+    if token != foo {
+        return StatusCode::NOT_FOUND;
+    }
 
     println!("Got a beep: {}", input.text);
+
+    let mut beeps = state.beeps.lock().await;
+
+    beeps.push(Beep {
+        text: input.text,
+        timestamp: OffsetDateTime::now_utc().format(&Rfc2822).unwrap(),
+    });
 
     StatusCode::CREATED
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct Beep {
+    text: String,
+    timestamp: String,
+}
+
 /// Home page handler; just render a template with some arguments.
-async fn home_page() -> impl IntoResponse {
-    render!(
-        templates::page,
-        &[("first", 3), ("second", 7), ("third", 2)]
-    )
+async fn home_page(Extension(state): Extension<Arc<AppState>>) -> impl IntoResponse {
+    let beeps = state.beeps.lock().await;
+
+    let mut demo = beeps.clone();
+    demo.reverse();
+    render!(templates::page, &demo)
 }
 
 /// Handler for static files.
@@ -73,8 +110,7 @@ async fn static_files(Path(filename): Path<String>) -> impl IntoResponse {
 
 async fn take_int(payload: Option<Path<usize>>) -> Response {
     if let Some(Path(n)) = payload {
-        render!(templates::page, &[(&format!("number {}", n), 1 + n % 7)])
-            .into_response()
+        render!(templates::page, &[]).into_response()
     } else {
         error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -85,8 +121,8 @@ async fn take_int(payload: Option<Path<usize>>) -> Response {
 }
 
 async fn make_error() -> Result<impl IntoResponse, ExampleAppError> {
-    let i = "three".parse()?;
-    Ok(render!(templates::page, &[("first", i)]))
+    let i: i8 = "three".parse()?;
+    Ok(render!(templates::page, &[]))
 }
 
 /// The error type that can be returned from resource handlers.
@@ -125,8 +161,8 @@ fn footer(out: &mut impl Write) -> io::Result<()> {
     templates::footer(
         out,
         &[
-            ("ructe", "https://crates.io/crates/ructe"),
-            ("axum", "https://crates.io/crates/axum"),
+            ("love", "https://crates.io/crates/axum"),
+            ("tears", "https://crates.io/crates/ructe"),
         ],
     )
 }
@@ -138,10 +174,7 @@ async fn handler_404() -> impl IntoResponse {
     )
 }
 
-fn error_response(
-    status_code: StatusCode,
-    message: &str,
-) -> impl IntoResponse + '_ {
+fn error_response(status_code: StatusCode, message: &str) -> impl IntoResponse + '_ {
     (status_code, render!(templates::error, status_code, message))
 }
 

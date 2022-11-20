@@ -1,36 +1,36 @@
 @use super::statics::*;
 @use crate::footer;
+@use crate::Beep;
 
-@(params: &[(&str, usize)])
+@(beeps: &[Beep])
 
 <!doctype html>
 <html lang="en">
-  <head>
-    <title>Example</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <link rel="stylesheet" type="text/css" href="/static/@style_css.name"/>
-  </head>
-  <body>
-    <main>
-      <h1>Example</h1>
 
-      <p>This is a simple sample page,
-      to be served with axum.
-      It contains an image of a squirrel and not much more.</p>
+<head>
+  <title>beeps</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" type="text/css" href="/static/@style_css.name" />
+</head>
 
-      <figure>
-        <img src="/static/@squirrel_jpg.name" alt="Squirrel!"
-             width="240" height="160"/>
-        <figcaption>A squirrel</figcaption>
-      </figure>
+<body>
+  <main>
+    <h1>Ludeed's beeps</h1>
 
-      @for (order, n) in params {
-      <p>This is a @order paragraph, with @n repeats.
-        @for _ in 1..=*n {
-        This is a @order paragraph.
-        }
-      }
-    </main>
-    @:footer()
-  </body>
+    <p>Twitter seems to be dying out these days, but the format still has its uses. I decided to build my own, it
+      currently has <code>1 user</code>(it will probably stay this way forever)</p>
+
+    @for b in beeps {
+    <blockquote>@b.text <br> - @b.timestamp </blockquote>
+    }
+
+    <figure>
+      <img src="/static/@squirrel_jpg.name" alt="Squirrel!" width="240" height="160" />
+      <figcaption>A squirrel</figcaption>
+    </figure>
+
+  </main>
+  @:footer()
+</body>
+
 </html>
